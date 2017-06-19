@@ -10,6 +10,7 @@ public class Msg {
     public int senderId;
     public String senderName;
     public String timeStamp;
+    public String url;
 
     public Msg(){}
 
@@ -51,5 +52,13 @@ public class Msg {
 
     public void setTimeStamp(String timeStamp) {
         this.timeStamp = timeStamp;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
     }
 }

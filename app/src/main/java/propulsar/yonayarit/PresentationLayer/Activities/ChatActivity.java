@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.location.Location;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Message;
@@ -32,6 +33,7 @@ import android.view.View;
 import android.view.animation.AnimationUtils;
 import android.view.animation.Interpolator;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.MimeTypeMap;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
 import android.widget.EditText;
@@ -41,6 +43,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.github.mikephil.charting.utils.FileUtils;
 import com.google.android.gms.awareness.Awareness;
 import com.google.android.gms.awareness.snapshot.LocationResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -63,18 +66,32 @@ import java.io.FileInputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
 import propulsar.yonayarit.DomainLayer.Adapters.GalleryAdapter;
 import propulsar.yonayarit.DomainLayer.Adapters.MsgAdapter;
 import propulsar.yonayarit.DomainLayer.Objects.Msg;
 import propulsar.yonayarit.DomainLayer.Objects.OtherMsg;
 import propulsar.yonayarit.DomainLayer.Objects.OwnMsg;
+import propulsar.yonayarit.DomainLayer.Services.UserClient;
 import propulsar.yonayarit.DomainLayer.WS;
 import propulsar.yonayarit.Manifest;
 import propulsar.yonayarit.R;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+import retrofit2.http.Multipart;
+import retrofit2.http.POST;
+import retrofit2.http.Part;
 
 public class ChatActivity extends AppCompatActivity implements
         WS.OnWSRequested,
@@ -356,6 +373,79 @@ public class ChatActivity extends AppCompatActivity implements
         }
     }
 
+    @NonNull
+    private RequestBody createPartFromString (String descriptionString){
+        return RequestBody.create(MultipartBody.FORM, descriptionString);
+    }
+
+
+    @NonNull
+    private MultipartBody.Part prepareFilePart(String partName, String fileLocation){
+        File file = new File(fileLocation);
+
+        Log.d("asdfg","mimeType = "+getMimeType(fileLocation));
+        Log.d("asdfg","contentResolver="+getContentResolver().getType(Uri.fromFile(file)));
+        Log.d("asdfg","URI="+Uri.fromFile(file).toString());
+
+        Uri myUri = Uri.parse(fileLocation);
+        RequestBody requestFile = RequestBody.create(
+                //MediaType.parse(getContentResolver().getType(Uri.fromFile(file))), file
+                MediaType.parse(getMimeType(fileLocation)), file
+        );
+
+        return MultipartBody.Part.createFormData(partName, file.getName(), requestFile);
+    }
+
+    public static String getMimeType(String url) {
+        String type = null;
+        String extension = MimeTypeMap.getFileExtensionFromUrl(url);
+        if (extension != null) {
+            type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+        }
+        return type;
+    }
+
+
+    private void uploadFileRetrofit(String fileLocation){
+        File file = new File(fileLocation);
+
+        //Create retrofit instance
+        Retrofit.Builder builder = new Retrofit.Builder()
+                .baseUrl("http://testsvcyonayarit.iog.digital/api/Message/SendImageMessages/")
+                .addConverterFactory(GsonConverterFactory.create());
+
+        Retrofit retrofit = builder.build();
+
+        //Get client & call object for the request
+        UserClient client = retrofit.create(UserClient.class);
+
+        //finally execute the request
+        Log.d("asdfg","userID="+userID+"fileName="+file.getName());
+        Call<ResponseBody> call = client.uploadPhoto(
+                createPartFromString(""+userID),
+                createPartFromString("3"),
+                createPartFromString("4"),
+                prepareFilePart("fileContents",fileLocation)
+        );
+
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                Log.d("asdfg","CORRECTO");
+                //Toast.makeText(ChatActivity.this, "YES!", Toast.LENGTH_SHORT).show();
+
+                hideGallery();
+                getMessages(false);
+            }
+
+            @Override
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Log.d("asdfg","ERROR");
+                //Toast.makeText(ChatActivity.this, "NO", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
     private void showGallery(){
 
         View view = getCurrentFocus();
@@ -372,26 +462,27 @@ public class ChatActivity extends AppCompatActivity implements
             mGalleryAdapter.setGalleryLoadedListener(ChatActivity.this);
             gallery.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 @Override
-                public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                    //((ImageView)view)
-                    /*
-                    Map<String, Object> params = new LinkedHashMap<>();
-                    params.put("userID",""+userID);
-                    params.put("link","201704261909.jpeg/"+userID+"/3");
-                    params.put("name","201704261909");
-                    params.put("namefull","201704261909.jpeg");
-                    params.put("image",((BitmapDrawable)((ImageView)view).getDrawable()).getBitmap());
-                    WS.getInstance(ChatActivity.this).uploadImage(params,ChatActivity.this);
-                    */
-                    final String tag = ((ImageView)view).getTag().toString();
-                    Log.d("UPLOADING","------- requested : "+tag);
-                    new AsyncTask<Void,Void,Void>(){
-                        @Override
-                        protected Void doInBackground(Void... voids) {
-                            uploadFile(tag);
-                            return null;
+                public void onItemClick(AdapterView<?> adapterView, final View view, int i, long l) {
+
+                    AlertDialog.Builder builder = new AlertDialog.Builder(ChatActivity.this);
+
+                    builder.setTitle("¿Deseas enviar la imagen seleccionada?");
+                    // Add the buttons
+                    builder.setPositiveButton("Si", new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            final String tag = ((ImageView)view).getTag().toString();
+                            Log.d("UPLOADING","------- requested : "+tag);
+                            uploadFileRetrofit(tag);
                         }
-                    }.execute();
+                    });
+                    builder.setNegativeButton("Cancelar", new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {}
+                    });
+
+                    // Create the AlertDialog
+                    AlertDialog dialog = builder.create();
+
+                    dialog.show();
                 }
             });
         }
@@ -572,6 +663,7 @@ public class ChatActivity extends AppCompatActivity implements
                 params.put("UserId",userID);
                 params.put("DestinationId",3);
                 params.put("Text",""+String.format("%.6f", lat)+","+ String.format("%.6f", lon));
+                params.put("MessageTypeId",3);
                 WS.getInstance(ChatActivity.this).sendMessage(params,ChatActivity.this);
 
                 }
@@ -607,6 +699,7 @@ public class ChatActivity extends AppCompatActivity implements
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("UserId",userID);
         params.put("DestinationId",3);
+        params.put("MessageTypeId",1);
         params.put("Text",mensaje);
         WS.getInstance(ChatActivity.this).sendMessage(params,this);
     }
@@ -668,6 +761,11 @@ public class ChatActivity extends AppCompatActivity implements
                     JSONArray newMsgJArray = data.getJSONArray("Data");
                     ArrayList<Msg> newMsgs = new ArrayList<Msg>();
 
+                    if(newMsgJArray.length()==0 && topRequested){
+                        swipeRefreshLayout.setRefreshing(false);
+                        return;
+                    }
+
                     for(int i=0; i<newMsgJArray.length();i++){
                         JSONObject newMsgJSONObject = newMsgJArray.getJSONObject(i);
                         Log.d("MSGDEB","sentfrom="+((newMsgJSONObject.getInt("UserId")==userID) ? "mine" : "other"));
@@ -682,6 +780,7 @@ public class ChatActivity extends AppCompatActivity implements
                         newMsg.setSenderId(newMsgJSONObject.getInt("UserId"));
                         newMsg.setMsg(newMsgJSONObject.getString("Text"));
                         newMsg.setTimeStamp(newMsgJSONObject.getString("CreatedAt"));
+                        newMsg.setUrl(newMsgJSONObject.getString("Url"));
 
                         newMsgs.add(newMsg);
                     }
@@ -758,182 +857,16 @@ public class ChatActivity extends AppCompatActivity implements
     // -------------- GALLERY LOADED IMPLEMENTATION --------------- //
     // ------------------------------------------------------------ //
 
+    /*
+    un num inf comienzo
+    vividor prof bosque
+    ojo falta tatmea
+    omellete asemeja caspa
+    */
+
     @Override
     public void onGalleryLoaded() {
         progressGalleryLoaded.setVisibility(View.GONE);
     }
 
-
-
-
-
-
-
-
-
-    int serverResponseCode;
-    public int uploadFile(final String sourceFileUri) {
-
-        String fileName = sourceFileUri;
-
-        HttpURLConnection conn = null;
-        DataOutputStream dos = null;
-        String lineEnd = "\r\n";
-        String twoHyphens = "--";
-        String boundary = "*****";
-        int bytesRead, bytesAvailable, bufferSize;
-        byte[] buffer;
-        int maxBufferSize = 1 * 1024 * 1024;
-        File sourceFile = new File(sourceFileUri);
-        fileName = sourceFile.getName();
-
-        if (!sourceFile.isFile()) {
-
-            Log.e("uploadFile", "Source File not exist");
-
-            return 0;
-
-        } else {
-            try {
-                FileInputStream fileInputStream = new FileInputStream(sourceFile);
-                URL url = new URL("http://svcyonayarit.iog.digital/media/UploadPhoto/img/1951/3");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setDoInput(true); // Allow Inputs
-                conn.setDoOutput(true); // Allow Outputs
-                conn.setUseCaches(false); // Don't use a Cached Copy
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Connection", "Keep-Alive");
-                //  conn.setRequestProperty("ENCTYPE", "multipart/form-data");
-                conn.setRequestProperty("Content-Type","multipart/form-data;boundary=" + boundary);
-                conn.setRequestProperty("fileContents", fileName);
-
-
-                dos = new DataOutputStream(conn.getOutputStream());
-
-
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-
-                //Adding Parameter userdestination
-                String name="3";
-                dos.writeBytes("Content-Disposition: form-data; name=\"userdestination\"" + lineEnd);
-                //dos.writeBytes("Content-Type: text/plain; charset=UTF-8" + lineEnd);
-                //dos.writeBytes("Content-Length: " + name.length() + lineEnd);
-                dos.writeBytes(lineEnd);
-                dos.writeBytes(name); // mobile_no is String variable
-                dos.writeBytes(lineEnd);
-
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-
-                //Adding Parameter userid
-                String phone="1951";
-                dos.writeBytes("Content-Disposition: form-data; name=\"userid\"" + lineEnd);
-                //dos.writeBytes("Content-Type: text/plain; charset=UTF-8" + lineEnd);
-                //dos.writeBytes("Content-Length: " + name.length() + lineEnd);
-                dos.writeBytes(lineEnd);
-                dos.writeBytes(phone); // mobile_no is String variable
-                dos.writeBytes(lineEnd);
-
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-
-                //Adding Parameter fileName
-                dos.writeBytes("Content-Disposition: form-data; name=\"fileName\"" + lineEnd);
-                //dos.writeBytes("Content-Type: text/plain; charset=UTF-8" + lineEnd);
-                //dos.writeBytes("Content-Length: " + name.length() + lineEnd);
-                dos.writeBytes(lineEnd);
-                dos.writeBytes(fileName); // mobile_no is String variable
-                dos.writeBytes(lineEnd);
-
-
-                //Json_Encoder encode=new Json_Encoder();
-                //call to encode method and assigning response data to variable 'data'
-                //String data=encode.encod_to_json();
-                //response of encoded data
-                //System.out.println(data);
-
-
-                //Adding Parameter filepath
-                /*
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-                String filepath="http://192.168.1.110/echo/uploads"+fileName;
-
-                dos.writeBytes("Content-Disposition: form-data; name=\"filepath\"" + lineEnd);
-                //dos.writeBytes("Content-Type: text/plain; charset=UTF-8" + lineEnd);
-                //dos.writeBytes("Content-Length: " + name.length() + lineEnd);
-                dos.writeBytes(lineEnd);
-                dos.writeBytes(filepath); // mobile_no is String variable
-                dos.writeBytes(lineEnd);
-                */
-
-
-                //Adding Parameter media file(audio,video and image)
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-
-                dos.writeBytes("Content-Disposition: form-data; name=\"uploaded_file\";filename=\""+ fileName + "\"" + lineEnd);
-                dos.writeBytes(lineEnd);
-                // create a buffer of maximum size
-                bytesAvailable = fileInputStream.available();
-                bufferSize = Math.min(bytesAvailable, maxBufferSize);
-                buffer = new byte[bufferSize];
-                // read file and write it into form...
-                bytesRead = fileInputStream.read(buffer, 0, bufferSize);
-
-                while (bytesRead > 0)
-                {
-                    dos.write(buffer, 0, bufferSize);
-                    bytesAvailable = fileInputStream.available();
-                    bufferSize = Math.min(bytesAvailable, maxBufferSize);
-                    bytesRead = fileInputStream.read(buffer, 0, bufferSize);
-                }
-
-                // send multipart form data necesssary after file data...
-                dos.writeBytes(lineEnd);
-                dos.writeBytes(twoHyphens + boundary + twoHyphens + lineEnd);
-
-
-                serverResponseCode = conn.getResponseCode();
-                String serverResponseMessage = conn.getResponseMessage();
-
-
-
-                Log.i("uploadFile", "HTTP Response is : "+ serverResponseMessage + ": " + serverResponseCode);
-
-                if (serverResponseCode == 200) {
-
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            Log.d("UPLOAD","Everything wetn fine");
-                        }
-                    });
-                }
-
-                // close the streams //
-                fileInputStream.close();
-                dos.flush();
-                dos.close();
-
-            } catch (MalformedURLException ex) {
-
-                ex.printStackTrace();
-
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        Log.e("Exception","MalformedURLException Exception : check script url.");
-                    }
-                });
-
-                Log.e("Upload file to server", "error: " + ex.getMessage(), ex);
-            } catch (final Exception e) {
-
-                e.printStackTrace();
-
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        Log.d("Got Exception : ",e.toString());
-                    }
-                });
-                Log.e("UploadException","Exception : " + e.getMessage(), e);
-            }
-            return serverResponseCode;
-        }
-    }
 }

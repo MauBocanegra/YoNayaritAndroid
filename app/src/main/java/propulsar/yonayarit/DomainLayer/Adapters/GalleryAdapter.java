@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Environment;
 import android.support.v4.content.ContextCompat;
@@ -17,6 +18,8 @@ import android.webkit.MimeTypeMap;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
+
+import com.squareup.picasso.Picasso;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -32,7 +35,8 @@ public class GalleryAdapter extends BaseAdapter {
 
     private ChatActivity activity;
 
-    ArrayList<File> images;
+    //ArrayList<File> images;
+    ArrayList<String> imagesPath;
 
     public GalleryAdapter(ChatActivity a){
         activity=a;
@@ -57,6 +61,7 @@ public class GalleryAdapter extends BaseAdapter {
 
                 Log.d("files","-------------");
 
+                int countDCIMFiles=0;
                 for(File fileDCIM : publicDCIMFiles){
                     Log.d("files","DCIM="+fileDCIM.toString());
                     if(fileDCIM.isDirectory()){
@@ -64,10 +69,15 @@ public class GalleryAdapter extends BaseAdapter {
                         for (File innerArchsDCIM : innerDCIM){
                             if(!innerArchsDCIM.isDirectory()){
                                 files.add(innerArchsDCIM);
+                                countDCIMFiles++;
                             }
+                            if(countDCIMFiles>=15){break;}
                         }
                     }
+
                 }
+
+                int countPublicFiles=0;
                 for(File filePIC : publicPICSFiles){
                     Log.d("files","PICS="+filePIC.toString());
                     if(filePIC.isDirectory()){
@@ -75,15 +85,19 @@ public class GalleryAdapter extends BaseAdapter {
                         for(File innerArchsPIC : innerPIC){
                             if(!innerArchsPIC.isDirectory()){
                                 files.add(innerArchsPIC);
+                                countPublicFiles++;
                             }
+                            if(countPublicFiles>=15){break;}
                         }
                     }
                 }
 
                 Log.d("files","# ALLFiles="+files.size());
 
-                images = new ArrayList<File>();
+                //images = new ArrayList<File>();
+                imagesPath = new ArrayList<String>();
                 //int kk = 0;
+                int countFiles=0;
                 for(File file : files){
                     try {
                         String extension = MimeTypeMap.getFileExtensionFromUrl(file.toURI().toURL().toString());
@@ -93,9 +107,12 @@ public class GalleryAdapter extends BaseAdapter {
                             //kk++;
                             //Log.d("files",mimeType);
                             if(mimeType.contains("image")){
-                                images.add(file);
+                                imagesPath.add(file.getAbsolutePath());
+                                //images.add(file);
+                                countFiles++;
                                 //Log.d("files","added!");
                             }
+                            //if(countFiles==50){break;}
                             //if(kk==50){break;}
                         }
                     }catch(Exception e){}
@@ -107,7 +124,8 @@ public class GalleryAdapter extends BaseAdapter {
             protected void onPostExecute(Void aVoid) {
                 super.onPostExecute(aVoid);
 
-                Log.d("files","# ALLFiles="+images.size());
+                //Log.d("files","# ALLFiles="+images.size());
+                Log.d("files","# ALLFiles="+imagesPath.size());
                 notifyDataSetChanged();
                 mGalleryLoadedListener.onGalleryLoaded();
             }
@@ -155,13 +173,13 @@ public class GalleryAdapter extends BaseAdapter {
 
     @Override
     public int getCount() {
-        if(images==null)return 0; else return images.size();
+        if(imagesPath==null)return 0; else return imagesPath.size();
         //return 50;
     }
 
     @Override
     public Object getItem(int i) {
-        return images.get(i);
+        return imagesPath.get(i);
     }
 
     @Override
@@ -183,8 +201,9 @@ public class GalleryAdapter extends BaseAdapter {
         }
 
         imageView.setImageDrawable(ContextCompat.getDrawable(activity, R.drawable.ic_image_ph));
-        imageView.setImageBitmap(BitmapFactory.decodeFile(images.get(i).getAbsolutePath()));
-        imageView.setTag(images.get(i).getAbsolutePath());
+        //imageView.setImageBitmap(BitmapFactory.decodeFile(imagesPath.get(i)));
+        Picasso.with(activity).load(Uri.fromFile(new File(imagesPath.get(i)))).into(imageView);
+        imageView.setTag(imagesPath.get(i));
         return imageView;
     }
 

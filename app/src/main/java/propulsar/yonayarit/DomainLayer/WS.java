@@ -313,7 +313,7 @@ public class WS {
                             userID=(String)param.getValue();
                     }
 
-                    URL url = new URL(urlFinalString);
+                    URL url = new URL("http://testsvcyonayarit.iog.digital/api/Message/SendImageMessages");
                     Log.d("urlString",url.toString());
                     StringBuilder postData = new StringBuilder();
                     Map<String, Object> params2 = new LinkedHashMap<>();
@@ -473,6 +473,7 @@ public class WS {
                             }
                         }
                         url = new URL(urlString+"/"+restURL);
+                        url = new URL("http://testsvcyonayarit.iog.digital/api/Message/SendImageMessages");
                         Log.d("urlString",url.toString());
                     }
                     StringBuilder postData = new StringBuilder();
@@ -755,7 +756,7 @@ public class WS {
         public void wsAnswered(JSONObject json);
     }
 
-    public static final String WS_URL = "http://svcyonayarit.iog.digital/api/";
+    public static final String WS_URL = "http://testsvcyonayarit.iog.digital/api/";
     public static final String WS_URLNOTTEST = "http://svcyonayarit.iog.digital/api/";
     //public static final String WS_TEST_URL = "http://testsvcyonayarit.iog.digital/api/";
 
